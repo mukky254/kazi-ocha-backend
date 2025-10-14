@@ -1,0 +1,27 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.log('MongoDB connection error:', err));
+
+// Routes
+app.get('/', (req, res) => {
+  res.json({ message: 'Kazi Ocha Backend API is running!' });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Export the app for Vercel
+module.exports = app;
