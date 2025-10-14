@@ -1,27 +1,21 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('../middleware/cors');
 
 const app = express();
 
-// Simple MongoDB connection (remove connectDB import)
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://mukky254:muhidinaliko2006@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0')
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
-
-// Middleware
-app.use(cors);
+// Basic middleware
 app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
 
-app.use('/api/test', require('./test'));
-
-// Test route
+// Simple test route
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Kazi Ocha API is working!',
     timestamp: new Date().toISOString(),
-    status: 'success',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    status: 'success'
   });
 });
 
@@ -29,34 +23,48 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
 
-// Import routes
-const jobRoutes = require('./jobs');
-const userRoutes = require('./users');
-
-// API routes
-app.use('/api/jobs', jobRoutes);
-app.use('/api/users', userRoutes);
+// Test jobs endpoint (no database)
+app.get('/api/jobs', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Jobs endpoint is working',
+    jobs: [
+      {
+        id: 1,
+        title: 'Test Job 1',
+        description: 'This is a test job',
+        location: 'Nairobi',
+        category: 'general'
+      },
+      {
+        id: 2, 
+        title: 'Test Job 2',
+        description: 'Another test job',
+        location: 'Mombasa',
+        category: 'construction'
+      }
+    ]
+  });
+});
 
 // Handle 404
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'API endpoint not found'
+    message: 'Endpoint not found'
   });
 });
 
-// Error handling middleware
+// Error handling
 app.use((error, req, res, next) => {
-  console.error('Server error:', error);
+  console.error('Error:', error);
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
-    error: error.message
+    message: 'Internal server error'
   });
 });
 
