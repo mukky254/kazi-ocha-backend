@@ -1,6 +1,12 @@
 const express = require('express');
+const mongoose = require('mongoose');
 
 const app = express();
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://mukky254:muhidinaliko2006@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0')
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => console.log('MongoDB connection error:', err));
 
 // Basic middleware
 app.use(express.json());
@@ -15,14 +21,16 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'Kazi Ocha API is working!',
     timestamp: new Date().toISOString(),
-    status: 'success'
+    status: 'success',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
-// Health check
+// Health check with DB status
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
