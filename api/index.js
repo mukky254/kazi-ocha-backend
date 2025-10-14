@@ -3,20 +3,29 @@ const mongoose = require('mongoose');
 
 const app = express();
 
-// MongoDB Connection with better error handling
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://mukky254:muhidinaliko2006@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0';
+// MongoDB Connection with event listeners
+const MONGODB_URI = process.env.MONGODB_URI;
 
-console.log('Attempting MongoDB connection...');
+console.log('🔧 Setting up MongoDB connection...');
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ MongoDB connected successfully');
-})
-.catch((error) => {
-  console.log('❌ MongoDB connection failed:', error.message);
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+});
+
+// Connection event listeners
+mongoose.connection.on('connected', () => {
+  console.log('✅ MongoDB connected successfully!');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.log('❌ MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('🔌 MongoDB disconnected');
 });
 
 // Basic middleware
@@ -27,7 +36,31 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple test route
+// Debug endpoint
+app.get('/api/debug', (req, res) => {
+  const dbStatus = mongoose.connection.readyState;
+  let statusText = 'unknown';
+  
+  switch(dbStatus) {
+    case 0: statusText = 'disconnected'; break;
+    case 1: statusText = 'connected'; break;
+    case 2: statusText = 'connecting'; break;
+    case 3: statusText = 'disconnecting'; break;
+  }
+  
+  res.json({
+    success: true,
+    mongodb: {
+      status: statusText,
+      code: dbStatus,
+      uriPresent: !!process.env.MONGODB_URI,
+      environment: process.env.NODE_ENV || 'not set'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Main endpoint
 app.get('/', (req, res) => {
   const dbStatus = mongoose.connection.readyState;
   let statusText = 'unknown';
@@ -48,89 +81,74 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check with DB status
+// Health check
 app.get('/api/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState;
   const isConnected = dbStatus === 1;
   
   res.json({ 
     status: 'OK',
-    database: isConnected ? 'connected' : 'disconnected',
+    database: isConnected ? 'connected' : 'connecting',
     databaseCode: dbStatus,
     timestamp: new Date().toISOString()
   });
 });
 
-// Test jobs endpoint (using test data for now)
+// Jobs endpoint with test data
 app.get('/api/jobs', (req, res) => {
   const dbStatus = mongoose.connection.readyState;
   const isConnected = dbStatus === 1;
   
   res.json({
     success: true,
-    message: isConnected ? 'Jobs endpoint working (DB connected)' : 'Jobs endpoint working (using test data)',
-    database: isConnected ? 'connected' : 'disconnected',
+    message: isConnected ? 'API ready for MongoDB data' : 'Using test data - MongoDB connecting',
+    database: isConnected ? 'connected' : 'connecting',
     jobs: [
       {
         id: 1,
-        title: 'Construction Worker Needed',
-        description: 'Looking for construction workers for building project in Nairobi',
-        location: 'Nairobi',
+        title: 'Construction Worker Needed - Nairobi',
+        description: 'Immediate opening for experienced construction workers for building project',
+        location: 'Nairobi, CBD',
+        salary: 'KSh 1,500 per day',
         category: 'construction',
-        salary: '1500 per day',
-        phone: '+254712345678'
+        phone: '+254712345678',
+        posted: '2 hours ago'
       },
       {
         id: 2,
-        title: 'Farm Assistant Urgently Needed',
-        description: 'Help with farm work and harvesting in Kiambu',
-        location: 'Kiambu',
-        category: 'agriculture', 
-        salary: '1200 per day',
-        phone: '+254723456789'
+        title: 'Farm Assistant - Kiambu',
+        description: 'Help with farm work, planting, and harvesting',
+        location: 'Kiambu County', 
+        salary: 'KSh 1,200 per day',
+        category: 'agriculture',
+        phone: '+254723456789',
+        posted: '5 hours ago'
       },
       {
         id: 3,
         title: 'House Cleaning Services',
-        description: 'Need reliable cleaner for residential house in Westlands',
-        location: 'Westlands',
+        description: 'Reliable cleaner needed for residential house cleaning',
+        location: 'Westlands, Nairobi',
+        salary: 'KSh 1,000 per day',
         category: 'domestic',
-        salary: '1000 per day',
-        phone: '+254734567890'
+        phone: '+254734567890',
+        posted: '1 day ago'
       }
     ]
   });
 });
 
-// POST create job (test endpoint)
-app.post('/api/jobs', (req, res) => {
-  const jobData = req.body;
-  
-  res.status(201).json({
-    success: true,
-    message: 'Job created successfully!',
-    job: {
-      id: Date.now(),
-      ...jobData,
-      createdAt: new Date().toISOString()
-    }
-  });
-});
-
-// Handle 404
+// Handle unknown endpoints
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Endpoint not found'
-  });
-});
-
-// Error handling
-app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error'
+    message: 'Endpoint not found',
+    availableEndpoints: [
+      '/',
+      '/api/health', 
+      '/api/debug',
+      '/api/jobs'
+    ]
   });
 });
 
