@@ -13,6 +13,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://mukky254:muhidinaliko
 app.use(cors);
 app.use(express.json());
 
+app.use('/api/test', require('./test'));
+
 // Test route
 app.get('/', (req, res) => {
   res.json({ 
