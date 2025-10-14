@@ -1,27 +1,47 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
-require('dotenv').config();
+const cors = require('./middleware/cors');
+const connectDB = require('../utils/database');
 
 const app = express();
 
+// Initialize database
+connectDB();
+
 // Middleware
-app.use(cors());
+app.use(cors);
 app.use(express.json());
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
+// Import routes
+const userRoutes = require('./users');
+const jobRoutes = require('./jobs');
 
 // Routes
 app.get('/', (req, res) => {
-  res.json({ message: 'Kazi Ocha Backend API is running!' });
+  res.json({ 
+    message: 'Kazi Ocha Backend API is running!',
+    timestamp: new Date().toISOString(),
+    status: 'active',
+    endpoints: {
+      users: '/api/users',
+      jobs: '/api/jobs',
+      health: '/api/health'
+    }
+  });
 });
 
+// Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Export the app for Vercel
+// API routes
+app.use('/api/users', userRoutes);
+app.use('/api/jobs', jobRoutes);
+
+// Export for Vercel serverless functions
 module.exports = app;
