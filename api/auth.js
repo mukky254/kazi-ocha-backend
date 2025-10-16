@@ -1,7 +1,8 @@
-// api/auth.js
 const { connectToDatabase } = require('../utils/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secure-jwt-secret-key-here-make-it-very-long-and-random';
 
 module.exports = async (req, res) => {
   // Set CORS headers
@@ -63,7 +64,7 @@ module.exports = async (req, res) => {
       // Generate JWT token
       const token = jwt.sign(
         { userId: result.insertedId, phone: user.phone }, 
-        process.env.JWT_SECRET, 
+        JWT_SECRET, 
         { expiresIn: '7d' }
       );
 
@@ -116,7 +117,7 @@ module.exports = async (req, res) => {
       // Generate JWT token
       const token = jwt.sign(
         { userId: user._id, phone: user.phone }, 
-        process.env.JWT_SECRET, 
+        JWT_SECRET, 
         { expiresIn: '7d' }
       );
 
