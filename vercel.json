@@ -13,7 +13,7 @@
     }
   ],
   "env": {
-    "MONGODB_URI": "mongodb+srv://mukky254:muhidinaliko2006@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0",
-    "JWT_SECRET": "kazi-mashinani-super-secret-jwt-key-2024"
+    "MONGODB_URI": "mongodb+srv://kaziuser:securepassword123@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0",
+    "JWT_SECRET": "your-super-secure-jwt-secret-key-here-make-it-very-long-and-random"
   }
 }
