@@ -4,73 +4,88 @@ const mongoose = require('mongoose');
 
 const app = express();
 
-// MongoDB connection with better Vercel handling
+// MongoDB connection with serverless optimization
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Global variable to track connection state
-let isConnected = false;
-let connectionPromise = null;
+console.log('🔧 Initializing MongoDB connection...');
+console.log('📡 MONGODB_URI present:', !!MONGODB_URI);
 
-// Improved connection function for serverless
+// Connection configuration for serverless
+const connectionOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 10000, // 10 seconds
+  socketTimeoutMS: 45000,
+  bufferCommands: false,
+  maxPoolSize: 10,
+  minPoolSize: 1,
+};
+
+// Global to track connection state
+let isConnecting = false;
+
 const connectDB = async () => {
-  if (isConnected) {
+  // If already connected, return
+  if (mongoose.connection.readyState === 1) {
     console.log('✅ Using existing MongoDB connection');
-    return;
+    return mongoose.connection;
   }
 
-  if (connectionPromise) {
-    console.log('🔄 Connection in progress, waiting...');
-    return connectionPromise;
+  // If connecting, wait for the connection
+  if (isConnecting) {
+    console.log('🔄 MongoDB connection in progress, waiting...');
+    return new Promise((resolve, reject) => {
+      const checkConnection = () => {
+        if (mongoose.connection.readyState === 1) {
+          resolve(mongoose.connection);
+        } else if (mongoose.connection.readyState === 0) {
+          reject(new Error('Connection failed'));
+        } else {
+          setTimeout(checkConnection, 100);
+        }
+      };
+      checkConnection();
+    });
   }
 
-  connectionPromise = mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-    bufferCommands: false,
-    bufferMaxEntries: 0
-  }).then(conn => {
-    isConnected = true;
+  isConnecting = true;
+  
+  try {
+    console.log('🚀 Attempting MongoDB connection...');
+    await mongoose.connect(MONGODB_URI, connectionOptions);
     console.log('✅ MongoDB connected successfully!');
-    return conn;
-  }).catch(error => {
+    isConnecting = false;
+    return mongoose.connection;
+  } catch (error) {
+    isConnecting = false;
     console.error('❌ MongoDB connection failed:', error.message);
-    connectionPromise = null;
     throw error;
-  });
-
-  return connectionPromise;
+  }
 };
 
 // Connection event listeners
 mongoose.connection.on('connected', () => {
-  isConnected = true;
   console.log('✅ MongoDB connected successfully!');
+  isConnecting = false;
 });
 
 mongoose.connection.on('error', (err) => {
-  isConnected = false;
   console.log('❌ MongoDB connection error:', err.message);
+  isConnecting = false;
 });
 
 mongoose.connection.on('disconnected', () => {
-  isConnected = false;
   console.log('🔌 MongoDB disconnected');
+  isConnecting = false;
 });
 
-// Middleware to handle DB connection for each request
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (error) {
-    console.error('Database connection failed:', error.message);
-    next(); // Continue anyway, we'll handle it in routes
-  }
-});
+// Initialize connection on startup
+connectDB().catch(console.error);
 
-// CORS middleware
+// Middleware
+app.use(express.json());
+
+// Enhanced CORS middleware
 app.use((req, res, next) => {
   const allowedOrigins = process.env.ALLOWED_ORIGINS ? 
     process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()) : 
@@ -93,68 +108,124 @@ app.use((req, res, next) => {
   next();
 });
 
-// Basic middleware
-app.use(express.json());
-
-// Health check (no DB dependency)
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
-  });
-});
-
-// Main endpoint with DB status
-app.get('/', async (req, res) => {
-  const dbStatus = mongoose.connection.readyState;
-  
-  res.json({ 
-    message: 'Kazi Ocha API is working!',
-    timestamp: new Date().toISOString(),
-    status: 'success',
-    database: dbStatus === 1 ? 'connected' : 'connecting',
-    databaseCode: dbStatus,
-    deployment: 'Vercel'
-  });
-});
-
-// Debug endpoint
-app.get('/api/debug', (req, res) => {
-  const dbStatus = mongoose.connection.readyState;
-  let statusText = 'unknown';
-  
-  switch(dbStatus) {
-    case 0: statusText = 'disconnected'; break;
-    case 1: statusText = 'connected'; break;
-    case 2: statusText = 'connecting'; break;
-    case 3: statusText = 'disconnecting'; break;
+// Routes that work even without DB connection
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbStatus = mongoose.connection.readyState;
+    const isConnected = dbStatus === 1;
+    
+    res.json({ 
+      status: isConnected ? 'OK' : 'WARNING',
+      database: isConnected ? 'connected' : 'disconnected',
+      databaseCode: dbStatus,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    res.json({
+      status: 'ERROR',
+      database: 'disconnected',
+      databaseCode: 0,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      error: 'Health check failed'
+    });
   }
-  
-  res.json({
-    success: true,
-    mongodb: {
-      status: statusText,
-      code: dbStatus,
-      uriPresent: !!process.env.MONGODB_URI,
-      environment: process.env.NODE_ENV || 'not set'
-    },
-    server: {
-      uptime: process.uptime()
-    },
-    timestamp: new Date().toISOString()
-  });
 });
 
-// Jobs endpoint (works even if DB is down)
+app.get('/', async (req, res) => {
+  try {
+    const dbStatus = mongoose.connection.readyState;
+    let statusText = 'unknown';
+    
+    switch(dbStatus) {
+      case 0: statusText = 'disconnected'; break;
+      case 1: statusText = 'connected'; break;
+      case 2: statusText = 'connecting'; break;
+      case 3: statusText = 'disconnecting'; break;
+    }
+    
+    res.json({ 
+      message: 'Kazi Ocha API is working!',
+      timestamp: new Date().toISOString(),
+      status: 'success',
+      database: statusText,
+      databaseCode: dbStatus,
+      deployment: 'Vercel',
+      note: dbStatus === 0 ? 'Database may connect on next request' : 'Database connection active'
+    });
+  } catch (error) {
+    res.json({
+      message: 'Kazi Ocha API is working!',
+      timestamp: new Date().toISOString(),
+      status: 'success',
+      database: 'error',
+      databaseCode: 0,
+      deployment: 'Vercel',
+      note: 'API working but database connection failed'
+    });
+  }
+});
+
+// Debug endpoint with connection attempt
+app.get('/api/debug', async (req, res) => {
+  try {
+    // Try to establish connection if not connected
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
+    
+    const dbStatus = mongoose.connection.readyState;
+    let statusText = 'unknown';
+    
+    switch(dbStatus) {
+      case 0: statusText = 'disconnected'; break;
+      case 1: statusText = 'connected'; break;
+      case 2: statusText = 'connecting'; break;
+      case 3: statusText = 'disconnecting'; break;
+    }
+    
+    res.json({
+      success: true,
+      mongodb: {
+        status: statusText,
+        code: dbStatus,
+        uriPresent: !!process.env.MONGODB_URI,
+        environment: process.env.NODE_ENV || 'not set',
+        databaseName: mongoose.connection.db ? mongoose.connection.db.databaseName : 'not connected'
+      },
+      server: {
+        uptime: process.uptime(),
+        platform: process.platform,
+        nodeVersion: process.version
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      mongodb: {
+        status: 'error',
+        code: mongoose.connection.readyState,
+        uriPresent: !!process.env.MONGODB_URI
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Jobs endpoint (always works with test data)
 app.get('/api/jobs', (req, res) => {
   const dbStatus = mongoose.connection.readyState;
+  const isConnected = dbStatus === 1;
   
   res.json({
     success: true,
-    message: dbStatus === 1 ? 'API ready for MongoDB data' : 'Using test data - MongoDB connecting',
-    database: dbStatus === 1 ? 'connected' : 'connecting',
+    message: isConnected ? 'API ready for MongoDB data' : 'Using test data - MongoDB connecting',
+    database: isConnected ? 'connected' : 'connecting',
+    databaseCode: dbStatus,
     jobs: [
       {
         id: 1,
@@ -175,19 +246,29 @@ app.get('/api/jobs', (req, res) => {
         category: 'agriculture',
         phone: '+254723456789',
         posted: '5 hours ago'
-      },
-      {
-        id: 3,
-        title: 'House Cleaning Services',
-        description: 'Reliable cleaner needed for residential house cleaning',
-        location: 'Westlands, Nairobi',
-        salary: 'KSh 1,000 per day',
-        category: 'domestic',
-        phone: '+254734567890',
-        posted: '1 day ago'
       }
     ]
   });
+});
+
+// Test database connection endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    await connectDB();
+    res.json({
+      success: true,
+      message: 'Database connection successful!',
+      database: 'connected',
+      databaseCode: mongoose.connection.readyState
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      message: 'Database connection failed',
+      error: error.message,
+      databaseCode: mongoose.connection.readyState
+    });
+  }
 });
 
 // Handle unknown endpoints
@@ -199,20 +280,20 @@ app.use('*', (req, res) => {
       '/',
       '/api/health', 
       '/api/debug',
-      '/api/jobs'
+      '/api/jobs',
+      '/api/test-db'
     ]
   });
 });
 
-// Error handling middleware
+// Error handling
 app.use((error, req, res, next) => {
-  console.error('Unhandled error:', error);
+  console.error('Server error:', error);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'production' ? {} : error.message
+    error: process.env.NODE_ENV === 'production' ? 'Something went wrong' : error.message
   });
 });
 
-// Export for Vercel
 module.exports = app;
