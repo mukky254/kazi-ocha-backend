@@ -1,29 +1,18 @@
-const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
 
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://mukky254:muhidinaliko2006@cluster0.bneqb6q.mongodb.net/kaziDB?retryWrites=true&w=majority&appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
+let cachedDb = null;
 
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
-
-async function connectDB() {
-  if (cached.conn) {
-    return cached.conn;
+async function connectToDatabase() {
+  if (cachedDb) {
+    return { db: cachedDb };
   }
 
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
-  }
-  cached.conn = await cached.promise;
-  return cached.conn;
+  const client = await MongoClient.connect(MONGODB_URI);
+  const db = client.db();
+  
+  cachedDb = db;
+  return { db };
 }
 
-module.exports = connectDB;
+module.exports = { connectToDatabase };
