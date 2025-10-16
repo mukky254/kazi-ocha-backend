@@ -1,19 +1,11 @@
-const connectDB = require('../utils/database');
-const Job = require('../models/Job');
-const cors = require('../middleware/cors');
+const { connectToDatabase } = require('../utils/database');
+const { ObjectId } = require('mongodb');
 
 module.exports = async (req, res) => {
-  // Apply CORS
-  await new Promise((resolve, reject) => {
-    cors(req, res, (result) => {
-      if (result instanceof Error) {
-        return reject(result);
-      }
-      return resolve(result);
-    });
-  });
-
-  await connectDB();
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   // Handle preflight
   if (req.method === 'OPTIONS') {
@@ -21,38 +13,18 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const { db } = await connectToDatabase();
+    const jobsCollection = db.collection('jobs');
+
     // GET - Get all jobs
     if (req.method === 'GET') {
-      const { page = 1, limit = 10, category, location, search } = req.query;
-      
-      let filter = { isActive: true };
-      
-      if (category) filter.category = category;
-      if (location) filter.location = new RegExp(location, 'i');
-      if (search) {
-        filter.$or = [
-          { title: new RegExp(search, 'i') },
-          { description: new RegExp(search, 'i') },
-          { location: new RegExp(search, 'i') }
-        ];
-      }
-      
-      const jobs = await Job.find(filter)
+      const jobs = await jobsCollection.find({ isActive: true })
         .sort({ createdAt: -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .lean();
-
-      const total = await Job.countDocuments(filter);
+        .toArray();
       
       res.status(200).json({
         success: true,
-        jobs,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total
-        }
+        jobs: jobs || []
       });
     }
     
@@ -73,20 +45,27 @@ module.exports = async (req, res) => {
         return phone.replace(/\D/g, '');
       };
       
-      const job = new Job({
-        ...jobData,
+      const job = {
+        title: jobData.title,
+        description: jobData.description,
+        location: jobData.location,
+        category: jobData.category || 'general',
         phone: formatPhone(jobData.phone),
         whatsapp: jobData.whatsapp ? formatPhone(jobData.whatsapp) : '',
+        businessType: jobData.businessType || 'Individual',
         employerId: jobData.employerId || `user_${Date.now()}`,
-        employerName: jobData.employerName || 'Anonymous'
-      });
+        employerName: jobData.employerName || 'Anonymous',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
       
-      await job.save();
+      const result = await jobsCollection.insertOne(job);
       
       res.status(201).json({
         success: true,
         message: 'Job posted successfully!',
-        job
+        job: { _id: result.insertedId, ...job }
       });
     }
     
@@ -102,12 +81,12 @@ module.exports = async (req, res) => {
         });
       }
       
-      const job = await Job.findByIdAndUpdate(id, updateData, {
-        new: true,
-        runValidators: true
-      });
+      const result = await jobsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { ...updateData, updatedAt: new Date() } }
+      );
       
-      if (!job) {
+      if (result.matchedCount === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
@@ -116,8 +95,7 @@ module.exports = async (req, res) => {
       
       res.status(200).json({
         success: true,
-        message: 'Job updated successfully!',
-        job
+        message: 'Job updated successfully!'
       });
     }
     
@@ -132,9 +110,11 @@ module.exports = async (req, res) => {
         });
       }
       
-      const job = await Job.findByIdAndDelete(id);
+      const result = await jobsCollection.deleteOne({ 
+        _id: new ObjectId(id) 
+      });
       
-      if (!job) {
+      if (result.deletedCount === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
