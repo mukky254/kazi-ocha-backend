@@ -4,11 +4,26 @@ const mongoose = require('mongoose');
 
 const app = express();
 
+// Debug environment variables at startup
+console.log('=== Environment Check ===');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ Present' : '❌ Missing');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('CLIENT_URL:', process.env.CLIENT_URL);
+console.log('ALLOWED_ORIGINS:', process.env.ALLOWED_ORIGINS);
+console.log('=========================');
+
 // MongoDB Connection with better error handling
 const MONGODB_URI = process.env.MONGODB_URI;
 
+if (!MONGODB_URI) {
+  console.error('❌ CRITICAL: MONGODB_URI is not defined in environment variables!');
+  console.error('Please check your .env file and ensure it contains MONGODB_URI');
+  process.exit(1);
+}
+
 console.log('🔧 Setting up MongoDB connection...');
-console.log('📡 Connecting to:', MONGODB_URI ? 'URI present' : 'URI missing!');
+console.log('📡 Connecting to MongoDB Atlas...');
 
 // Improved connection with async/await
 const connectDB = async () => {
@@ -22,6 +37,7 @@ const connectDB = async () => {
     console.log('✅ MongoDB connected successfully!');
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
+    console.error('💡 Tips: Check your MongoDB Atlas IP whitelist and credentials');
     process.exit(1); // Exit if DB connection fails
   }
 };
@@ -42,18 +58,34 @@ mongoose.connection.on('disconnected', () => {
   console.log('🔌 MongoDB disconnected');
 });
 
-// Basic middleware
+// Enhanced CORS middleware
 app.use(express.json());
 app.use((req, res, next) => {
-  const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'];
+  const allowedOrigins = process.env.ALLOWED_ORIGINS ? 
+    process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()) : 
+    ['*'];
+  
   const origin = req.headers.origin;
   
-  if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
+  console.log(`🌐 CORS check - Origin: ${origin}, Allowed: ${allowedOrigins}`);
+  
+  if (allowedOrigins.includes('*')) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (allowedOrigins.length > 0) {
+    res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
   }
   
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   next();
 });
 
@@ -78,6 +110,10 @@ app.get('/api/debug', (req, res) => {
       environment: process.env.NODE_ENV || 'not set',
       database: mongoose.connection.db ? mongoose.connection.db.databaseName : 'not connected'
     },
+    server: {
+      port: process.env.PORT || 3000,
+      uptime: process.uptime()
+    },
     timestamp: new Date().toISOString()
   });
 });
@@ -99,7 +135,8 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     status: 'success',
     database: statusText,
-    databaseCode: dbStatus
+    databaseCode: dbStatus,
+    frontend: 'https://kazi-ocha-frontend-887d.vercel.app'
   });
 });
 
@@ -113,7 +150,8 @@ app.get('/api/health', (req, res) => {
     database: isConnected ? 'connected' : 'connecting',
     databaseCode: dbStatus,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -171,17 +209,20 @@ app.use('*', (req, res) => {
       '/api/health', 
       '/api/debug',
       '/api/jobs'
-    ]
+    ],
+    documentation: 'Check /api/debug for server status'
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
   console.log(`📊 MongoDB connection state: ${mongoose.connection.readyState}`);
+  console.log(`🔗 Frontend URL: ${process.env.CLIENT_URL}`);
+  console.log(`🌐 Allowed origins: ${process.env.ALLOWED_ORIGINS}`);
 });
 
 module.exports = app;
