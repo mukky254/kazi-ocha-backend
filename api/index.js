@@ -1,4 +1,3 @@
-// api/index.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -9,30 +8,52 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://mukky254:your-password@cluster0.mongodb.net/kazi-ocha';
+// MongoDB Connection with better error handling
+const connectDB = async () => {
+  try {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    
+    if (!MONGODB_URI) {
+      console.log('⚠️  MONGODB_URI not found, running without database');
+      return;
+    }
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.log('❌ MongoDB Connection Error:', err));
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('✅ MongoDB Connected');
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error.message);
+    // Don't crash the server if DB connection fails
+  }
+};
 
-// Root API route
+// Initialize DB connection
+connectDB();
+
+// Routes
 app.get('/api', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  
   res.json({
     success: true,
     message: 'Kazi Ocha Backend API is working!',
-    endpoints: ['/auth', '/jobs', '/employees', '/health']
+    database: dbStatus,
+    endpoints: ['/auth', '/jobs', '/health']
   });
 });
 
-// Health check route
 app.get('/api/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  
   res.json({
     success: true,
-    message: 'Server is healthy',
-    timestamp: new Date().toISOString()
+    message: `Server is healthy - Database: ${dbStatus}`,
+    timestamp: new Date().toISOString(),
+    database: dbStatus
   });
 });
 
-// Export the Express API
+// Export the app
 module.exports = app;
