@@ -1,51 +1,38 @@
-const { connectToDatabase } = require('../utils/database');
+// api/index.js
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
 
-module.exports = async (req, res) => {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+const app = express();
 
-  try {
-    const { db } = await connectToDatabase();
-    
-    // Root endpoint
-    if (req.url === '/' || req.url === '') {
-      return res.json({ 
-        success: true, 
-        message: 'Kazi Ocha Backend API is working!',
-        timestamp: new Date().toISOString(),
-        endpoints: ['/auth', '/jobs', '/employees', '/health']
-      });
-    }
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-    // Health check
-    if (req.url === '/health') {
-      return res.json({ 
-        success: true, 
-        status: 'OK', 
-        database: 'Connected',
-        timestamp: new Date().toISOString()
-      });
-    }
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://mukky254:your-password@cluster0.mongodb.net/kazi-ocha';
 
-    res.status(404).json({ 
-      success: false, 
-      error: 'Endpoint not found',
-      path: req.url 
-    });
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ MongoDB Connected'))
+  .catch(err => console.log('❌ MongoDB Connection Error:', err));
 
-  } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error',
-      message: error.message 
-    });
-  }
-};
+// Root API route
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Kazi Ocha Backend API is working!',
+    endpoints: ['/auth', '/jobs', '/employees', '/health']
+  });
+});
+
+// Health check route
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Server is healthy',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Export the Express API
+module.exports = app;
