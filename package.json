@@ -1,48 +1,22 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
+{
+  "name": "kazi-ocha-backend",
+  "version": "1.0.0",
+  "description": "Kazi Ocha Backend API",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "node api/index.js",
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
 
-const app = express();
-
-// Basic middleware - no MongoDB connection for now
-app.use(cors());
-app.use(express.json());
-
-// Test route without MongoDB
-app.get('/api', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Kazi Ocha Backend API is working!',
-    endpoints: ['/auth', '/jobs', '/health']
-  });
-});
-
-// Health check without DB
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Server is running (DB connection pending)',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Simple test routes
-app.get('/api/jobs', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Jobs endpoint - DB connection pending',
-    jobs: []
-  });
-});
-
-app.get('/api/auth/test', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Auth endpoint - DB connection pending'
-  });
-});
-
-// Export the app
-module.exports = app;
 
 
